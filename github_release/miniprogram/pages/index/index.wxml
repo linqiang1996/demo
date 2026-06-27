@@ -1,0 +1,143 @@
+<view class="page">
+  <view class="hero">
+    <view class="hero-title">FOF净值跟踪</view>
+    <view class="hero-subtitle">手机端实时查看产品净值、组合收益和资产规模</view>
+  </view>
+
+  <view wx:if="{{error}}" class="error">{{error}}</view>
+  <view wx:if="{{loading}}" class="loading">加载中...</view>
+
+  <block wx:if="{{!loading && portfolio}}">
+    <view class="card">
+      <view class="section-bar" data-key="metrics" bindtap="toggleSection">
+        <view class="section-title">组合指标</view>
+        <view class="section-toggle">{{sections.metrics ? '收起' : '展开'}}</view>
+      </view>
+      <view wx:if="{{sections.metrics}}">
+      <view class="section-note">截至 {{portfolio.metrics.as_of_date || '-'}}，组合单位净值、周度收益、今年以来收益、年度收益、累积收益、回撤和风险指标均按组合净值曲线计算；当前资产规模与初始投资规模单独按规模口径展示；当前组合样本点 {{portfolio.metrics.history_points || 0}} 个，跨度 {{portfolio.metrics.history_days || 0}} 天。</view>
+      <view class="metric-grid">
+        <view class="metric">
+          <text class="label">组合单位净值</text>
+          <text class="value">{{portfolio.metrics.latest_nav ? portfolio.metrics.latest_nav.toFixed(4) : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">周度最大回撤</text>
+          <text class="value">{{portfolio.metrics.weekly_max_drawdown !== null ? (portfolio.metrics.weekly_max_drawdown * 100).toFixed(2) + '%' : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">周度收益</text>
+          <text class="value">{{portfolio.metrics.weekly_return !== null ? (portfolio.metrics.weekly_return * 100).toFixed(2) + '%' : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">今年以来收益</text>
+          <text class="value">{{portfolio.metrics.ytd_return !== null ? (portfolio.metrics.ytd_return * 100).toFixed(2) + '%' : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">当前资产规模</text>
+          <text class="value">{{portfolio.metrics.current_asset_scale ? portfolio.metrics.current_asset_scale.toFixed(2) : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">初始投资规模</text>
+          <text class="value">{{portfolio.metrics.initial_investment_scale ? portfolio.metrics.initial_investment_scale.toFixed(2) : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">累积收益</text>
+          <text class="value">{{portfolio.metrics.since_invest_return !== null ? (portfolio.metrics.since_invest_return * 100).toFixed(2) + '%' : '-'}}</text>
+        </view>
+        <view class="metric">
+          <text class="label">日度最大回撤</text>
+          <text class="value">{{portfolio.metrics.daily_max_drawdown !== null ? (portfolio.metrics.daily_max_drawdown * 100).toFixed(2) + '%' : '-'}}</text>
+        </view>
+      </view>
+      <view wx:if="{{portfolio.warnings && portfolio.warnings.length}}" class="warning-box">
+        <block wx:for="{{portfolio.warnings}}" wx:key="*this">
+          <view class="warning-line">{{item}}</view>
+        </block>
+      </view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-bar" data-key="annual" bindtap="toggleSection">
+        <view class="section-title">年度收益</view>
+        <view class="section-toggle">{{sections.annual ? '收起' : '展开'}}</view>
+      </view>
+      <view wx:if="{{sections.annual}}">
+      <picker wx:if="{{annualOptions.length}}" range="{{annualOptions}}" range-key="label" value="{{annualOptionIndex}}" bindchange="onAnnualChange">
+        <view class="row">
+          <view class="row-title">{{selectedAnnual ? selectedAnnual.label : '请选择年份'}}</view>
+          <view class="row-meta">点按这里切换年度收益</view>
+        </view>
+      </picker>
+      <view wx:if="{{selectedAnnual}}" class="annual-value">
+        {{selectedAnnual.return !== null ? (selectedAnnual.return * 100).toFixed(2) + '%' : '-'}}
+      </view>
+      <view wx:else class="row-meta">暂无年度收益数据</view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-bar" data-key="curve" bindtap="toggleSection">
+        <view class="section-title">收益曲线选择</view>
+        <view class="section-toggle">{{sections.curve ? '收起' : '展开'}}</view>
+      </view>
+      <view wx:if="{{sections.curve}}">
+      <picker range="{{chartOptions}}" range-key="label" value="{{chartOptionIndex}}" bindchange="onSeriesChange">
+        <view class="row">
+          <view class="row-title">{{activeSeriesLabel || '请选择曲线'}}</view>
+          <view class="row-meta">可切换查看FOF组合或单个持仓产品的净值曲线数据</view>
+        </view>
+      </picker>
+      <block wx:if="{{activeSeries && activeSeries.length}}">
+        <view class="row">
+          <view class="row-title">最近曲线数据</view>
+          <view class="row-meta">起始日期：{{activeSeries[0].date}}</view>
+          <view class="row-meta">最新日期：{{activeSeries[activeSeries.length - 1].date}}</view>
+          <view class="row-meta">最新值：{{activeSeries[activeSeries.length - 1].nav}}</view>
+        </view>
+      </block>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-bar" data-key="positions" bindtap="toggleSection">
+        <view class="section-title">组合持仓规模</view>
+        <view class="section-toggle">{{sections.positions ? '收起' : '展开'}}</view>
+      </view>
+      <view wx:if="{{sections.positions}}">
+      <block wx:for="{{portfolio.positions}}" wx:key="product_key">
+        <view class="row">
+          <view class="row-title">{{item.product_name || item.product_key}}</view>
+          <view class="row-meta">首次建仓单位净值：{{item.entry_nav ? item.entry_nav.toFixed(6) : '-'}}</view>
+          <view class="row-meta">最新净值：{{item.latest_nav ? item.latest_nav.toFixed(6) : '-'}}</view>
+          <view class="row-meta">最新净值日期：{{item.latest_observed_date || '-'}}</view>
+          <view class="row-meta">下投以来收益：{{item.since_invest_return !== null ? (item.since_invest_return * 100).toFixed(2) + '%' : '-'}}</view>
+          <view class="row-meta">初始投资：{{item.initial_investment_scale ? item.initial_investment_scale.toFixed(2) : '-'}}</view>
+          <view class="row-meta">当前规模：{{item.current_asset_scale ? item.current_asset_scale.toFixed(2) : '-'}}</view>
+          <view class="row-meta">下投起始日：{{item.first_invest_date || '-'}}</view>
+          <view class="row-meta">距最新组合净值滞后天数：{{item.stale_days !== null && item.stale_days !== undefined ? item.stale_days : '-'}}</view>
+        </view>
+      </block>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="section-bar" data-key="products" bindtap="toggleSection">
+        <view class="section-title">产品净值</view>
+        <view class="section-toggle">{{sections.products ? '收起' : '展开'}}</view>
+      </view>
+      <view wx:if="{{sections.products}}">
+      <block wx:for="{{products}}" wx:key="product_key">
+        <view class="row">
+          <view class="row-title">{{item.product_name}}</view>
+          <view class="row-meta">下投起始日：{{item.first_invest_date || '-'}}</view>
+          <view class="row-meta">最新净值：{{item.latest_nav ? item.latest_nav.toFixed(6) : '-'}}</view>
+          <view class="row-meta">当日增长：{{item.daily_return !== null ? (item.daily_return * 100).toFixed(2) + '%' : '-'}}</view>
+          <view class="row-meta">当周增长：{{item.weekly_return !== null ? (item.weekly_return * 100).toFixed(2) + '%' : '-'}}</view>
+          <view class="row-meta">下投以来增长：{{item.since_invest_return !== null ? (item.since_invest_return * 100).toFixed(2) + '%' : '-'}}</view>
+        </view>
+      </block>
+      </view>
+    </view>
+  </block>
+</view>

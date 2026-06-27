@@ -1,0 +1,6 @@
+page {
+  background: #f4f7fb;
+  color: #0f172a;
+  font-family: sans-serif;
+}
+

@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: fof-nav-tracker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /healthz
+    plan: starter
+    disk:
+      name: fof-nav-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 5
+    envVars:
+      - key: FOF_SECRET_KEY
+        generateValue: true
+      - key: FOF_DB_PATH
+        value: /opt/render/project/src/data/fof_nav.db
+      - key: FOF_BOOTSTRAP_SAMPLES
+        value: "false"
+      - key: FOF_MAIL_PROVIDER
+        value: qq
+      - key: FOF_MAIL_IMAP_HOST
+        value: imap.qq.com
+      - key: FOF_MAIL_IMAP_PORT
+        value: "993"
+      - key: FOF_MAIL_FOLDER
+        value: INBOX
+      - key: FOF_MAIL_SEARCH_KEYWORD
+        value: 净值
+      - key: FOF_MAIL_POLL_MINUTES
+        value: "5"
+      - key: FOF_MAIL_USE_SSL
+        value: "true"
+      - key: FOF_MAIL_INITIAL_SYNC_LIMIT
+        value: "300"
+      - key: FOF_MAIL_OVERLAP_UIDS
+        value: "300"
+      - key: FOF_RISK_FREE_RATE
+        value: "0.015"
+      - key: FOF_ANNUAL_TRADING_DAYS
+        value: "252"
+      - key: FOF_WEEKLY_PERIODS
+        value: "52"
+      - key: FOF_ACCESS_CODE
+        sync: false
+      - key: FOF_MAIL_ADDRESS
+        sync: false
+      - key: FOF_MAIL_PASSWORD
+        sync: false
