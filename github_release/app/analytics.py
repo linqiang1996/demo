@@ -328,6 +328,7 @@ def build_portfolio_nav(
         result = _empty_portfolio_result()
         result["metrics"]["configured_initial_nav"] = float(configured_initial_nav)
         result["metrics"]["configured_latest_nav"] = float(configured_latest_nav) if configured_latest_nav is not None else None
+        result["warnings"].append("当前云端还没有保存组合配置，FOF组合净值与指标需要先在组合配置区保存一次后才会完整显示。")
         return _append_manual_positions(result, manual_positions, configured_initial_nav, configured_latest_nav, None)
 
     filtered = nav_df[nav_df["product_key"].isin(normalized_config.keys())].copy()
@@ -335,6 +336,7 @@ def build_portfolio_nav(
         result = _empty_portfolio_result()
         result["metrics"]["configured_initial_nav"] = float(configured_initial_nav)
         result["metrics"]["configured_latest_nav"] = float(configured_latest_nav) if configured_latest_nav is not None else None
+        result["warnings"].append("当前组合配置中的产品尚未在云端同步到可用净值序列，所以组合指标暂时无法完整计算。")
         return _append_manual_positions(result, manual_positions, configured_initial_nav, configured_latest_nav, None)
 
     pivot = filtered.pivot_table(index="nav_date", columns="product_key", values="nav_value", aggfunc="last")

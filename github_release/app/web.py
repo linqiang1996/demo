@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
 import os
 import socket
 import threading
+import time
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -272,6 +274,66 @@ def build_portfolio_form_rows(
     return rows, total_amount
 
 
+def seed_portfolio_if_needed(db: Database, app_config: AppConfig) -> None:
+    if db.has_portfolio("default"):
+        return
+    raw_json = app_config.portfolio_seed_json
+    if not raw_json:
+        return
+    try:
+        payload = json.loads(raw_json)
+    except json.JSONDecodeError:
+        logging.exception("failed to parse FOF_PORTFOLIO_JSON")
+        return
+    if not isinstance(payload, dict):
+        logging.warning("FOF_PORTFOLIO_JSON is not a JSON object and was ignored")
+        return
+    db.save_portfolio("default", payload)
+    logging.info("seeded default portfolio from FOF_PORTFOLIO_JSON")
+
+
+def build_dashboard_context(
+    db: Database,
+    app_config: AppConfig,
+    mail_config: MailConfig,
+) -> dict[str, Any]:
+    try:
+        local_ip = socket.gethostbyname(socket.gethostname())
+    except Exception:
+        local_ip = "127.0.0.1"
+    all_nav_df = load_nav_dataframe(db)
+    product_keys, using_mail_products = visible_product_keys(db)
+    nav_df = filter_nav_dataframe(all_nav_df, product_keys)
+    inferred_entry_navs = default_entry_navs(nav_df)
+    snapshots = compute_product_snapshots(nav_df)
+    sync_state = db.get_sync_state()
+    selected_portfolio, selected_settings, manual_rows = resolve_portfolio_allocations(db, product_keys, nav_df)
+    portfolio_rows, total_amount = build_portfolio_form_rows(snapshots, selected_portfolio, inferred_entry_navs, manual_rows)
+    portfolio = build_portfolio_nav(
+        nav_df,
+        selected_portfolio,
+        risk_free_rate=app_config.risk_free_rate,
+        annual_trading_days=app_config.annual_trading_days,
+        weekly_periods=app_config.weekly_periods,
+        initial_portfolio_nav=selected_settings.get("initial_nav"),
+        latest_portfolio_nav=selected_settings.get("latest_nav"),
+        manual_positions=manual_rows,
+    )
+    return {
+        "products": snapshots,
+        "sync_state": sync_state,
+        "portfolio_allocations": selected_portfolio,
+        "portfolio_settings": selected_settings,
+        "portfolio_rows": portfolio_rows,
+        "portfolio_total_amount": total_amount,
+        "portfolio": portfolio,
+        "mail_configured": mail_config.configured,
+        "mail_poll_minutes": mail_config.poll_minutes,
+        "local_ip": local_ip,
+        "using_mail_products": using_mail_products,
+    }
+
+
 def create_app() -> Flask:
     load_env_file()
     ensure_data_directories()
@@ -279,6 +341,7 @@ def create_app() -> Flask:
     mail_config = MailConfig()
     db = Database(app_config.database_url)
     db.initialize()
+    seed_portfolio_if_needed(db, app_config)
 
     if app_config.bootstrap_samples:
         bootstrap_sample_nav_data(db, app_config.sample_data_dir)
@@ -303,10 +366,22 @@ def create_app() -> Flask:
     def scheduled_sync() -> None:
         try:
             run_mail_sync()
+            if "dashboard_cache" in app.config:
+                app.config["dashboard_cache"] = {"expires_at": 0.0, "context": None}
         except RuntimeError:
             logging.info("mail sync skipped because another sync is already running")
         except Exception:
             logging.exception("scheduled mail sync failed")
+
+    def startup_sync() -> None:
+        try:
+            run_mail_sync()
+            if "dashboard_cache" in app.config:
+                app.config["dashboard_cache"] = {"expires_at": 0.0, "context": None}
+        except RuntimeError:
+            logging.info("startup mail sync skipped because another sync is already running")
+        except Exception:
+            logging.exception("startup mail sync failed")
 
     app = Flask(__name__, template_folder=str(Path(__file__).resolve().parent / "templates"))
     static_dir = Path(__file__).resolve().parent / "static"
@@ -323,14 +398,10 @@ def create_app() -> Flask:
     app.config["mail_sync"] = mail_sync
     app.config["app_config"] = app_config
     app.config["mail_config"] = mail_config
+    app.config["dashboard_cache"] = {"expires_at": 0.0, "context": None}
 
     if mail_config.configured:
-        try:
-            run_mail_sync()
-        except RuntimeError:
-            logging.info("startup mail sync skipped because another sync is already running")
-        except Exception:
-            logging.exception("startup mail sync failed")
+        threading.Thread(target=startup_sync, name="fof-startup-mail-sync", daemon=True).start()
 
     @app.before_request
     def require_access() -> Any:
@@ -369,42 +440,13 @@ def create_app() -> Flask:
 
     @app.route("/")
     def index():
-        try:
-            local_ip = socket.gethostbyname(socket.gethostname())
-        except Exception:
-            local_ip = "127.0.0.1"
-        all_nav_df = load_nav_dataframe(db)
-        product_keys, using_mail_products = visible_product_keys(db)
-        nav_df = filter_nav_dataframe(all_nav_df, product_keys)
-        inferred_entry_navs = default_entry_navs(nav_df)
-        snapshots = compute_product_snapshots(nav_df)
-        sync_state = db.get_sync_state()
-        selected_portfolio, selected_settings, manual_rows = resolve_portfolio_allocations(db, product_keys, nav_df)
-        portfolio_rows, total_amount = build_portfolio_form_rows(snapshots, selected_portfolio, inferred_entry_navs, manual_rows)
-        portfolio = build_portfolio_nav(
-            nav_df,
-            selected_portfolio,
-            risk_free_rate=app_config.risk_free_rate,
-            annual_trading_days=app_config.annual_trading_days,
-            weekly_periods=app_config.weekly_periods,
-            initial_portfolio_nav=selected_settings.get("initial_nav"),
-            latest_portfolio_nav=selected_settings.get("latest_nav"),
-            manual_positions=manual_rows,
-        )
-        return render_template(
-            "index.html",
-            products=snapshots,
-            sync_state=sync_state,
-            portfolio_allocations=selected_portfolio,
-            portfolio_settings=selected_settings,
-            portfolio_rows=portfolio_rows,
-            portfolio_total_amount=total_amount,
-            portfolio=portfolio,
-            mail_configured=mail_config.configured,
-            mail_poll_minutes=mail_config.poll_minutes,
-            local_ip=local_ip,
-            using_mail_products=using_mail_products,
-        )
+        cache = app.config["dashboard_cache"]
+        now = time.time()
+        cache_seconds = max(0, int(app_config.dashboard_cache_seconds))
+        if cache.get("context") is None or now >= float(cache.get("expires_at", 0.0)):
+            cache["context"] = build_dashboard_context(db, app_config, mail_config)
+            cache["expires_at"] = now + cache_seconds
+        return render_template("index.html", **cache["context"])
 
     @app.post("/portfolio")
     def save_portfolio():
@@ -471,6 +513,7 @@ def create_app() -> Flask:
         if manual_products:
             allocations["__manual_products"] = manual_products
         db.save_portfolio("default", allocations)
+        app.config["dashboard_cache"] = {"expires_at": 0.0, "context": None}
         return redirect(url_for("index"))
 
     @app.post("/sync")
@@ -481,6 +524,7 @@ def create_app() -> Flask:
                 full_rescan = True
             reprocess_existing = str(request.args.get("reprocess", "0")).lower() in {"1", "true", "yes", "on"}
             result = run_mail_sync(full_rescan=full_rescan, reprocess_existing=reprocess_existing)
+            app.config["dashboard_cache"] = {"expires_at": 0.0, "context": None}
             return jsonify(
                 {
                     "ok": True,

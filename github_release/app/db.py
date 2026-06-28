@@ -293,6 +293,10 @@ class Database:
             return None
         return json.loads(row["weight_json"])
 
+    def has_portfolio(self, name: str) -> bool:
+        row = self.fetchone("SELECT 1 FROM portfolios WHERE name = ? LIMIT 1", (name,))
+        return row is not None
+
     def get_processed_uids(self, uids: Iterable[int]) -> set[int]:
         uid_list = [int(uid) for uid in uids]
         if not uid_list:

@@ -56,6 +56,8 @@ class AppConfig:
     annual_trading_days: int = field(default_factory=lambda: int(os.getenv("FOF_ANNUAL_TRADING_DAYS", "252")))
     weekly_periods: int = field(default_factory=lambda: int(os.getenv("FOF_WEEKLY_PERIODS", "52")))
     access_code: str = field(default_factory=lambda: os.getenv("FOF_ACCESS_CODE", "").strip())
+    portfolio_seed_json: str = field(default_factory=lambda: os.getenv("FOF_PORTFOLIO_JSON", "").strip())
+    dashboard_cache_seconds: int = field(default_factory=lambda: int(os.getenv("FOF_DASHBOARD_CACHE_SECONDS", "30")))
 
 
 def ensure_data_directories() -> None:

@@ -134,6 +134,18 @@ class PortfolioAnalyticsTests(unittest.TestCase):
         self.assertEqual(position["product_name"], "手动产品A")
         self.assertTrue(position["is_manual_only"])
 
+    def test_empty_portfolio_shows_clear_warning(self) -> None:
+        result = build_portfolio_nav(
+            to_nav_frame([]),
+            {},
+            risk_free_rate=0.0,
+            annual_trading_days=252,
+            weekly_periods=52,
+        )
+
+        self.assertTrue(result["warnings"])
+        self.assertIn("当前云端还没有保存组合配置", result["warnings"][0])
+
 
 if __name__ == "__main__":
     unittest.main()
